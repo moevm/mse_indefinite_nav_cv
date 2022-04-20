@@ -1,0 +1,11 @@
+<package>
+  <name>markup_detection</name>
+  <version>0.1.0</version>
+  <description>
+  This package is a package for detection markups
+  </description>
+  <maintainer email="sttiemath@gmail.com">Samvel Arutyunyan</maintainer>
+  <license>None</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+</package>

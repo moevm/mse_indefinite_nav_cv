@@ -1,4 +1,4 @@
-Ссылка на bagfile - .
+Ссылка на bagfile - https://disk.yandex.ru/d/bbHYs5DjyPoBkA.
 
 Чтобы записать bagfile, я воспользовался такой последовательностью команд:
 ```

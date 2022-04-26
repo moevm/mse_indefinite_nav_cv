@@ -6,4 +6,4 @@
 
 В выпадающем списке в открывшемся GUI нужно выбрать топик, из которого мы будем читать изображение. В моем случае - это /autobot03/camera_node/image
 
-![Camera](1.png "Camera")
+![Camera](../media/rqt_image_view.jpg "Camera")

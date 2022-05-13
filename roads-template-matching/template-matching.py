@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 
-VIDEO_PATH = "video.mp4"
 PERSPECTIVE_RESUL_WIDTH = 260
 PERSPECTIVE_RESUL_HEIGHT = 180
 
@@ -55,50 +54,20 @@ def match_by_template(frame, frame_to_copy, offset, color, template_path):
 
     return image_display
 
-def main():
-    video = cv2.VideoCapture(VIDEO_PATH)
-    perspective_writer = cv2.VideoWriter('video_perspective.mp4', cv2.VideoWriter_fourcc(*'MP4V'), 20, (PERSPECTIVE_RESUL_WIDTH, PERSPECTIVE_RESUL_HEIGHT))
-    original_writer = cv2.VideoWriter('video_output.mp4', cv2.VideoWriter_fourcc(*'MP4V'), 20, (640, 480))
+def run(frame):
+    perspective = get_perspective(frame)
 
-    i = 0
-    perspective = None
-    frame = None
-    paused = False
-    while True:
-        key = cv2.waitKey(5)
-        if key & 0xFF == ord('q'):
-            break
-        if key & 0xFF == ord(' '):
-            paused = not paused
-        
-        if paused:
-            continue
+    left, center, right = crop_three_parts(perspective)
 
-        ret, frame = video.read()
+    perspective = match_by_template(right, perspective, (CENTER_END, 0), (255, 0, 0), RIGHT_MARKUP_TEMPLATE_PATH)
+    perspective = match_by_template(center, perspective, (LEFT_END, 0), (0, 255, 0), CENTER_MARKUP_TEMPLATE_PATH)
+    perspective = match_by_template(left, perspective, (0, 0), (0, 0, 255), LEFT_MARKUP_TEMPLATE_PATH)
 
-        perspective = get_perspective(frame)
-
-        if key & 0xFF == ord('w'):
-            cv2.imwrite(f"test-subjects/perspective{i}.png", perspective)
-            i += 1
-
-        left, center, right = crop_three_parts(perspective)
-
-        perspective = match_by_template(right, perspective, (CENTER_END, 0), (255, 0, 0), RIGHT_MARKUP_TEMPLATE_PATH)
-        perspective = match_by_template(center, perspective, (LEFT_END, 0), (0, 255, 0), CENTER_MARKUP_TEMPLATE_PATH)
-        perspective = match_by_template(left, perspective, (0, 0), (0, 0, 255), LEFT_MARKUP_TEMPLATE_PATH)
-
-        # cv2.imshow('left', left)
-        # cv2.imshow('center', center)
-        # cv2.imshow('right', right)
-        cv2.imshow('perspective', perspective)
-        cv2.imshow('original', frame)
-        
-        perspective_writer.write(perspective)
-        original_writer.write(frame)
-
-    video.release()
+    # cv2.imshow('left', left)
+    # cv2.imshow('center', center)
+    # cv2.imshow('right', right)
+    cv2.imshow('perspective', perspective)
+    cv2.imshow('original', frame)
+    
+    cv2.waitKey(0)
     cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    main()

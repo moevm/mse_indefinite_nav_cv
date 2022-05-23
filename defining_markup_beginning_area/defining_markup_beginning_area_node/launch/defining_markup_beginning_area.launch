@@ -1,0 +1,6 @@
+<launch>
+	<arg name="veh" default="$(env VEHICLE_NAME)"/>
+	<group ns="$(arg veh)">
+		<node name="defining_markup_beginning_area" pkg="defining_markup_beginning_area" type="defining_markup_beginning_area.py" output="screen" required="true"/>
+	</group>
+</launch>

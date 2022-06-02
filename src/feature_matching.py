@@ -1,52 +1,30 @@
 from datetime import datetime
 import cv2
 import numpy as np
+from curve import get_line
 
 
-def video_to_frames(path):
-    frames_list = []
-    videoCapture = cv2.VideoCapture(path)
-    frames = videoCapture.get(cv2.CAP_PROP_FRAME_COUNT)
-    fps = videoCapture.get(cv2.CAP_PROP_FPS)
-    frames = videoCapture.get(cv2.CAP_PROP_FRAME_COUNT)
-    for i in range(int(frames)):
-        ret, frame = videoCapture.read()
-        frames_list.append(frame)
-    return frames_list, fps
-
-
-def gen_bezier_quadratic(p0, p1, p2, num=50):
-    t_ar = np.linspace(0, 1, num)
-    res = [(1 - t)**2 * p0 + 2 * t * (1 - t) * p1 + t**2 * p2 for t in t_ar]
-    return res
-
-
-def get_line(img, p_near, p_far, dir):
-    pts = []
-    col = []
-    if not dir is None:
-        if np.abs(dir) == 1:  # left or right
-            if (dir == -1):  # left
-                col = [0, 0, 0]  # right line
-            else:  # right
-                col = [0, 255, 255]  # left line
-            p_corner = np.array([p_near[0], p_far[1]])
-            pts = np.array(gen_bezier_quadratic(
-                p_near, p_corner, p_far), np.int32)
-            pts = pts.reshape((-1, 1, 2))
-            #cv2.polylines(img, [pts], False, [0, 0, 0], 3)
-        # if dir == 0: # forward
-        #   cv2.line(img, p_near, p_far, [0, 0, 0], 3)
-    return pts, col
-
-
-class Macther:
-    def __init__(self):
+class Matcher:
+    def __init__(self, features='orb'):
         self.timesum = 0
         self.featsum = 0
         self.matchsum = 0
         self.frames = []
         self.last_H = np.identity(3)
+        self.last_frame = []
+        self.descs_prev = []
+        self.kps_prev = []
+        self.drawing = False
+
+        # create detector and matcher
+        if features == 'orb':
+            self.detector = cv2.ORB_create()
+            self.matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        elif features == 'sift':
+            self.detector = cv2.SIFT_create()
+            self.matcher = cv2.BFMatcher(cv2.NORM_L2)
+        else:
+            print('Wrong featurer')
 
     def get_avg(self, frames_num):
         print("Avg time (2 detections + matching):", self.timesum / frames_num)
@@ -61,61 +39,53 @@ class Macther:
         cv2.addWeighted(img, 1.5, new, -0.5, 0, new)
         return img
 
-    def calculate_matches(self, im1, im2, features='orb', show=False):
-        # crop 4/10 part from top
-        h1, w1 = im1.shape[:2]
-        query_img = im1  # [int(h1 * 0.3):, :]
-        h2, w2 = im2.shape[:2]
-        train_img = im2  # [int(h2 * 0.3):, :]
+    def calculate_matches(self, im_prev, im_new, show=False):
+        first = False
 
-        # filter
-        query_img = self._unsharp(query_img)
-        train_img = self._unsharp(train_img)
+        if len(self.descs_prev) == 0:
+            first = True
 
-        # convert to grayscale
-        query_img_bw = cv2.cvtColor(query_img, cv2.COLOR_BGR2GRAY)
-        train_img_bw = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
+        #im_new = self._unsharp(im_new)
+        im_new_bw = cv2.cvtColor(im_new, cv2.COLOR_BGR2GRAY)
 
-        # create detector and matcher
-        if features == 'orb':
-            detector = cv2.ORB_create()
-            matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
-        elif features == 'sift':
-            detector = cv2.SIFT_create()
-            matcher = cv2.BFMatcher(cv2.NORM_L2)
-        else:
-            print('Wrong featurer')
-            return
+        if first:
+            #im_prev = self._unsharp(im_prev)
+            im_prev_bw = cv2.cvtColor(im_prev, cv2.COLOR_BGR2GRAY)
 
         a = datetime.now()
 
         # detect
-        queryKeypoints, queryDescriptors = detector.detectAndCompute(
-            query_img_bw, None)
-        trainKeypoints, trainDescriptors = detector.detectAndCompute(
-            train_img_bw, None)
+        if first:
+            self.kps_prev, self.descs_prev = self.detector.detectAndCompute(im_prev_bw, None)
+        im_new_kps, im_new_descs = self.detector.detectAndCompute(im_new_bw, None)
 
         # match and ratio test
         good_m = []
-        if not(queryDescriptors is None) and not(trainDescriptors is None):
-            matches = matcher.knnMatch(queryDescriptors, trainDescriptors, k=2)
+        if not(self.descs_prev is None) and not(im_new_descs is None):
+            matches = self.matcher.knnMatch(
+                self.descs_prev, im_new_descs, k=2)
             # print("Matches", len(matches))
             for m in matches:
                 if len(m) > 1 and m[0].distance < 0.75 * m[1].distance:
                     good_m.append([m[0]])
 
+        im_prev_kps = self.kps_prev
+        self.kps_prev = im_new_kps
+        self.descs_prev = im_new_descs
+
         b = datetime.now()
 
-        if show:
-            self.draw_matches(im1, im2, queryKeypoints, trainKeypoints, good_m)
-            self.draw_stitching(im1, im2, queryKeypoints, trainKeypoints, good_m)
+        # if show:
+        #     self.draw_matches(im1, im2, queryKeypoints, trainKeypoints, good_m)
+        #     self.draw_stitching(im1, im2, queryKeypoints,
+        #                         trainKeypoints, good_m)
 
         # update stats
-        self.featsum += len(queryKeypoints)
+        self.featsum += len(im_new_kps)
         self.matchsum += len(good_m)
         self.timesum += (b - a).microseconds
 
-        return queryKeypoints, trainKeypoints, good_m
+        return im_prev_kps, im_new_kps, good_m
 
     def draw_stitching(self, im1, im2, kpsA, kpsB, matches):
         h1, w1 = im1.shape[:2]
@@ -193,66 +163,95 @@ class Macther:
         cv2.imshow("Matches", match_img)
         cv2.waitKey(1)
 
-    def transform_pts(self, frame, frame_prev, pts, show=False):
+    def transform_pts(self, frame, descs_prev, pts, show=False):
         kpsA, kpsB, matches = self.calculate_matches(
-            frame_prev, frame, 'sift', show)
+            descs_prev, frame, show)
         H = self.get_homography(kpsA, kpsB, matches)
-        if H is not None and len(H) > 0:
-            pts = np.float32(pts).reshape(-1, 1, 2)
+        pts = np.float32(pts).reshape(-1, 1, 2)
+        if H is not None and len(H) > 0 and len(pts) > 0:
             return cv2.perspectiveTransform(pts, H)
         return pts
+    
+    def is_drawing(self):
+        return self.drawing
 
-    def draw_transform(self, frames, p_near, p_far, dir, show=False):
-        pts, col = get_line(frames[0], p_near, p_far, dir)
+    def is_in_frame(point, w, h):
+        return point[0][0] > 0 and point[0][1] > 0 and point[0][0] < h and point[0][1] < w
 
-        for i in range(1, len(frames)):
-            frame = frames[i]
-            pts = self.transform_pts(frame, frames[i-1], pts, show)
+    def frame_transform(self, frame, p_far=[], dir=0):
+        if not self.drawing:
+            if len(p_far) == 2:
+                self.pts_l, self.pts_r = get_line(frame, p_far, dir)
+                self.drawing = True
+            else:
+                self.last_frame = frame
+                return frame
+        else:
+            points = self.pts_l
+            if len(self.pts_r) > 0: 
+                points = np.concatenate([self.pts_l, self.pts_r]) 
+            transformed = self.transform_pts(
+                frame, self.last_frame, points, False).squeeze()
+            self.pts_l = transformed[0:len(self.pts_l)]
+            if len(self.pts_r) > 0:
+                self.pts_r = transformed[len(self.pts_l):]
 
-            # check if all points are bad
-            isok = False
-            h, w = frame.shape[:2]
-            for p in pts:
-                p = p[0]
-                if p[0] > 0 and p[0] < h and p[1] > 0 and p[1] < w:
-                    isok = True
-                    break
-            if not isok:  # stop drawing line
-                return i
+        self.last_frame = frame
 
-            cv2.polylines(frame, [np.array(pts, np.int32)],
-                          False, col, 3)
-            self.frames.append(frame)
-            # cv2.imshow("frame", frame)
-            # cv2.waitKey(1)
-        return len(frames)
+        h, w = frame.shape[:2]
 
-def get_point_from_rect(p1, p2):
-    return np.array([p1[0] + (p2[0] - p1[0]) / 2, p1[1] + (p2[1] - p1[1]) / 2], np.int32)
+        # delete out of frame points
+        del_inds = []
+        for i in range(len(self.pts_l)):
+            p = self.pts_l[i]
+            if p[0] < -100 or p[0] > w + 100 or p[1] < -100 or p[1] > h + 100:
+                del_inds.append(i)
+        if len(del_inds) > 0:
+            self.pts_l = np.delete(self.pts_l, del_inds, 0)
+            self.pts_l = np.float32(self.pts_l).reshape(-1, 1, 2).squeeze()
 
-if __name__ == "__main__":
-    frames, fps = video_to_frames("./tesla.mp4")
+        del_inds = []
+        for i in range(len(self.pts_r)):
+            p = self.pts_r[i]
+            if p[0] < -100 or p[0] > w + 100 or p[1] < -100 or p[1] > h + 100:
+                del_inds.append(i)
+        if len(del_inds) > 0:
+            self.pts_r = np.delete(self.pts_r, del_inds, 0)
+            self.pts_r = np.float32(self.pts_r).reshape(-1, 1, 2).squeeze()
 
-    # for i in range(len(frames)):
-    #     h1, w1 = frames[i].shape[:2]
-    #     frames[i] = frames[i][int(h1 * 0.3):, :]
+        if len(self.pts_l) <= 2 or len(self.pts_r) <= 2:
+            self.drawing = False
+            return frame
 
-    p_start = np.array([90, 500], np.int32)#get_point_from_rect([70, 440], [110, 460])
-    p_end = np.array([580, 230], np.int32)#get_point_from_rect([480, 190], [520, 210])
-    frames = frames[850:1000]
+        # draw lines
+        cv2.polylines(frame, [np.array(self.pts_l, np.int32)],
+                      False, [0, 255, 255], 5)
+        if len(self.pts_r) > 0:
+            cv2.polylines(frame, [np.array(self.pts_r, np.int32)],
+                      False, [255, 255, 255], 5)
+        return frame
 
-    m = Macther()
-    last = m.draw_transform(frames, p_start, p_end, 1, True)
+    # def draw_transform(self, frames, p_near, p_far, dir, show=False):
+    #     self.pts, self.col = get_line(frames[0], p_near, p_far, dir)
 
-    # write video
-    new_frames = m.get_frames()
-    if (last < len(frames)):
-        new_frames.extend(frames[last:])
-    if not new_frames is None and len(new_frames) > 0:
-        out = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(
-            'M', 'J', 'P', 'G'), fps, (new_frames[0].shape[1], new_frames[0].shape[0]))
-        for frame in new_frames:
-            out.write(frame)
-        out.release()
-    # statistics
-    m.get_avg(len(frames))
+    #     for i in range(1, len(frames)):
+    #         frame = frames[i]
+    #         pts = self.transform_pts(frame, frames[i-1], pts, show)
+
+    #         # check if all points are bad
+    #         isok = False
+    #         h, w = frame.shape[:2]
+    #         for p in pts:
+    #             p = p[0]
+    #             if p[0] > 0 and p[0] < h and p[1] > 0 and p[1] < w:
+    #                 isok = True
+    #                 break
+    #         if not isok:  # stop drawing line
+    #             return i
+
+    #         cv2.polylines(frame, [np.array(pts, np.int32)],
+    #                       False, self.col, 3)
+    #         self.frames.append(frame)
+    #         # cv2.imshow("frame", frame)
+    #         # cv2.waitKey(1)
+    #     return len(frames)

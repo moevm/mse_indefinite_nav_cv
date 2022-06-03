@@ -54,7 +54,33 @@ def match_by_template(frame, frame_to_copy, offset, color, template_path):
 
     return image_display
 
+def get_if_has_harris(frame, rectangle):
+    left_top, right_bottom = rectangle[0], rectangle[1]
+
+    for y in range(left_top[1], right_bottom[1]):
+        for x in range(left_top[0], right_bottom[0]):
+            if frame[y, x] == [0, 0, 255]:
+                return rectangle
+    
+    return None
+
+
+def get_template_rectangles(frame, a_template_path, b_template_path, c_template_path):
+    a_match_loc, a_template = match(frame, a_template_path)
+    b_match_loc, b_template = match(frame, b_template_path)
+    c_match_loc, c_template = match(frame, c_template_path)
+
+    a_rectangle = [a_match_loc, (a_match_loc[0] + a_template.shape[1], a_match_loc[1] + a_template.shape[0])]
+    b_rectangle = [b_match_loc, (b_match_loc[0] + b_template.shape[1], b_match_loc[1] + b_template.shape[0])]
+    c_rectangle = [c_match_loc, (c_match_loc[0] + c_template.shape[1], c_match_loc[1] + c_template.shape[0])]
+
+    return get_if_has_harris(frame, a_rectangle), get_if_has_harris(frame, b_rectangle), get_if_has_harris(frame, c_rectangle)
+
 def run(frame):
+    gray = np.float32(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+    harris = cv2.cornerHarris(gray, 2, 3, 0.04)
+    frame[harris > 0.01 * harris.max()] = [0, 0, 255]
+
     perspective = get_perspective(frame)
 
     left, center, right = crop_three_parts(perspective)
@@ -63,11 +89,6 @@ def run(frame):
     perspective = match_by_template(center, perspective, (LEFT_END, 0), (0, 255, 0), CENTER_MARKUP_TEMPLATE_PATH)
     perspective = match_by_template(left, perspective, (0, 0), (0, 0, 255), LEFT_MARKUP_TEMPLATE_PATH)
 
-    # cv2.imshow('left', left)
-    # cv2.imshow('center', center)
-    # cv2.imshow('right', right)
-    cv2.imshow('perspective', perspective)
-    cv2.imshow('original', frame)
+    all_template_rectangles = get_template_rectangles(frame, LEFT_MARKUP_TEMPLATE_PATH, CENTER_MARKUP_TEMPLATE_PATH, RIGHT_MARKUP_TEMPLATE_PATH)
     
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    return perspective, frame, all_template_rectangles

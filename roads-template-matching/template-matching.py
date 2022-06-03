@@ -59,7 +59,7 @@ def get_if_has_harris(frame, rectangle):
 
     for y in range(left_top[1], right_bottom[1]):
         for x in range(left_top[0], right_bottom[0]):
-            if frame[y, x] == [0, 0, 255]:
+            if all(frame[y, x] == [0, 0, 255]):
                 return rectangle
     
     return None

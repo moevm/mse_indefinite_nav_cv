@@ -1,0 +1,6 @@
+<launch>
+	<arg name="veh" default="$(env VEHICLE_NAME)"/>
+	<group ns="$(arg veh)">
+		<node name="crossroads_drawer" pkg="crossroads_drawer" type="images-read.py" output="screen" required="true"/>
+	</group>
+</launch>
